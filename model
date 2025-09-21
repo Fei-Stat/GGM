@@ -1,0 +1,87 @@
+import pandas as pd
+import torch
+import matplotlib.pyplot as plt
+
+from mlp_block import MLP
+
+# Define a function to calculate the loss function
+def calculate_loss(y, x_tilde, alpha, omega):
+    p = y.shape[1]
+
+    # Create a mask to ensure i!=j
+    mask = torch.ones(p, p)
+    mask.fill_diagonal_(0)
+
+    # alpha_masked = alpha_ijs * (1-delta_ij)
+    alpha_masked = alpha * mask.unsqueeze(2)
+
+    y_hat_term1 = torch.einsum('pjd,nd->npj', alpha_masked, x_tilde) # (n, p, p)
+
+    omega_ratio = torch.sqrt(omega.unsqueeze(1) / omega.unsqueeze(0))
+
+    y_hat = torch.einsum('nij,ji,nj->ni', y_hat_term1, omega_ratio, y)
+
+    total_loss = torch.sum((y - y_hat) ** 2)
+
+    return 0.5 * total_loss
+
+# Read the reponse random variable data (i.e., close prices of selected 50 etfs)
+y = pd.read_excel('top_50_complete_etfs.xlsx', index_col=0)
+y_index = y.index
+y = torch.tensor(y.to_numpy(), dtype=torch.float32)
+
+# Read the covariates data
+x_raw = pd.read_excel('encoded_headlines.xlsx', index_col=0)
+x_raw = x_raw.loc[y_index] # Allign x and y on timeline
+x_raw = torch.tensor(x_raw.to_numpy(), dtype=torch.float32)
+
+# Dimensionality reduction
+mlp_model = MLP(input_dim = 50 * 25)
+x_tilde = mlp_model(x_raw)
+
+n = y.shape[0]
+p = y.shape[1]
+d = x_tilde.shape[1]
+
+alpha = torch.randn(p, p, d, requires_grad=True)
+omega_raw = torch.randn(p, requires_grad=True)
+omega = torch.exp(omega_raw)
+
+loss = calculate_loss(y, x_tilde, alpha, omega)
+
+params = [alpha, omega_raw]
+params.extend(list(mlp_model.parameters()))
+
+optimizer = torch.optim.Adam(params, lr=0.001)
+epochs = 50000
+loss_history = []
+
+with torch.no_grad():
+    x_tilde_initial = mlp_model(x_raw)
+    omega_initial = torch.exp(omega_raw)
+    initial_loss = calculate_loss(y, x_tilde_initial, alpha, omega_initial)
+    print(f"Initial Loss: {initial_loss.item():.4f}")
+
+for epoch in range(epochs):
+    optimizer.zero_grad()
+    x_tilde = mlp_model(x_raw)
+    omega = torch.exp(omega_raw)
+    loss = calculate_loss(y, x_tilde, alpha, omega)
+    loss.backward()
+    optimizer.step()
+
+    loss_history.append(loss.item())
+
+    if (epoch + 1) % 100 == 0:
+        print(f"Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}")
+
+print("Training finished.")
+
+# Draw the loss plot
+plt.figure(figsize=(10, 6))
+plt.plot(loss_history)
+plt.title("Loss Function Curve")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.grid(True)
+plt.savefig("loss_plot.png")
