@@ -1,0 +1,38 @@
+import torch
+import numpy as np
+
+from torch import nn
+
+# Define an MLP neural network model designed very carefully
+class MLP(nn.Module):
+    """
+    Define a model inheriting from nn.Module
+
+    Args:
+        nn.Module: the parent class
+    """
+    def __init__(self, input_dim):
+        """
+        Initialize the model (to create a model instance)
+
+        Args:
+            input_dim: the number of features of one sample
+        """
+        # An instance self of My_Model class inherits from the parent
+        super(MLP, self).__init__()
+
+        # nn.Sequential() serves as a container for the models
+        self.layers = nn.Sequential(
+            nn.Linear(input_dim, 640),
+            nn.ReLU(),
+            nn.Linear(640, 320),
+            nn.ReLU(),
+            nn.Linear(320, 160),
+            nn.ReLU(),
+            nn.Linear(160, 10)
+        )
+
+    # Define a method for calculating the result of the forward pass flow
+    def forward(self, x):
+        x = self.layers(x)
+        return x
